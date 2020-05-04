@@ -1,0 +1,539 @@
+---
+title: "Spotify"
+author: "Hardik Gupta"
+date: '2020-04-04'
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+### Problem Statement
+The objective of this project is to explore various songs and to classify them in to genres by analysing their audio features.This helps music streaming services such as Spotify/Youtube and many other platforms to create playlits and also make recommendations to their user based on their preferences and also music they have listened to in past.
+
+
+### Approach
+The dataset used for our analysis has been extracted from Spotify using the spotifyr package (https://www.rcharlie.com/spotifyr/), the dataset inlcludes 12 audio feautures or dimension such as "arousal", "valence", and "depth", we further explain these features later in the document. 
+After tidying the data, I plan to use some visualization to understand how each of the 12 audio features relate to each genre and various artists, performing basic analysis on data, and then using data mining techniques to classify songs in to various categories or genres.
+
+### Proposed analytical technqiue
+I will first perform data cleaning on the data set to find out any missing values and then decide whether to delete or impute those, check if their are any outliers in data if yes then how it might affect the results and according decide to delete or keep it.
+For the purpose of classification I will most probably be using decision tree or it's extensions such as random forest. 
+*will explore other techniques which might give a better classification rate and then decide which technique is most appropriate.
+
+### How will it help the consumer?
+Consumer can make use of the analysis to put songs in to broader genres or categories which traditionally may not belong the same genre but have similar features and that can be used to create custom playlists suitable for a particular occasion or mood.
+Recommendations for new songs from different genres/languages which have similar features such as danceability, energy, valence etc can be made to a user depending on their listening history and preferences.
+
+
+data.table
+tidyverse
+randomForest
+rpart
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+  
+
+```{r message = FALSE, warning = FALSE}
+
+# this package is used to read data files, is faster than readr package
+library(data.table) 
+
+# this package is used to get basic statistics of numerical variables using basicStats function
+library(fBasics)
+
+# it is a collection of multiple packages used to clean, visualise,model, and to communicate the data.
+library(tidyverse) 
+
+# this is used to genrate random forest(data mining technique) to model the data and classify the results.
+library(randomForest) 
+
+# this is used to generate decision trees which will help in classifying the data in to genres.
+library(rpart) 
+
+#to use ggarrange()
+library(ggpubr)
+
+#LDA function
+library(MASS)
+
+```
+
+## Data Preparation
+
+#### 3.1
+The data comes from Spotify via the [spotifyr package](https://www.rcharlie.com/spotifyr/). [Charlie Thompson](https://twitter.com/_RCharlie), [Josiah Parry](https://twitter.com/JosiahParry), Donal Phipps, and Tom Wolff authored this package to make it easier to get either your own data or general metadata arounds songs from Spotify's API.
+
+Data downloded from: https://www.dropbox.com/sh/qj0ueimxot3ltbf/AACzMOHv7sZCJsj3ErjtOG7ya?dl=1
+
+#### 3.1
+#### Purpose
+I can't seem to find any particular purpose of the source data since this package spotifyr is only used to extract data, and users can extract and use this data for various purposes. 
+This package was published on 13th July, 2019.
+
+For our analysis we will be using 12 audio features in the dataset 
+1.acousticness 
+2.liveness 
+3.speechiness 
+4.instrumentalness 
+5.energy 
+6.loudness 
+7.danceability 
+8.valence 
+9.duration 
+10.tempo 
+11.key 
+12.mode
+
+
+
+#### 3.2
+Original dataset extracted via this package has 23 variables as listed below.
+Data importing is done using the fread() from data.table package which is then stored in a data frame called songs.
+
+We then check the variable names in the dataframe using names() function which returns the column names.
+
+First 6 observartions are displayed using the head() function.
+```{r}
+#rerading dataset in to songs.
+songs <- fread("spotify_songs.csv")
+#checking variable or column names
+names(songs)
+#displaying the first 6 observations.
+head(songs)
+```
+
+#### 3.3
+There are total 32833 observations in 23 variables.
+
+sum() and is.na() is used to get the sum of all the missing values in the dataframe, there are 15 missing values in the data set. Next we check where these missing values are in the dataset using apply() here second parameter 2 indicates to search for missing values in columns rather than rows and which() returns the indices where the missing values are.
+```{r}
+
+#checking the structure of the dataframe songs.
+str(songs)
+
+#summing the total na values in songs.
+sum(is.na(songs))
+
+#finding out where these missing values are.
+
+apply(is.na(songs), 2, which)
+#this function is giving an error when I knit the html file, while it works fine when I run it normally. This is giving the column names and row number where the missing values are. I am not sure how to resolve it.
+
+
+
+#summarising the data mean, min and max for numerical variables.
+options(digits = 2)# limiting the decimal digits to 2
+
+
+#getting all the numeric variables/columns in numsongs
+numsongs <- songs[,sapply(songs, is.numeric), with= FALSE] 
+#getting expeceted value and range.
+stat <- basicStats(numsongs)[c("Mean","Minimum", "Maximum"),]
+
+```
+We can see observation numbers 8152, 9283, 9284, 19569, and 19812 have missing values in columns "track_name", "track_artist", and "track_album_name". All the information for these 4 observation related to names of songs and artists have been missed. This shouldn't really be a problem in our analysis as we have all the necessary information required to classify a song to a particular genre.
+
+
+The data is clean and there is hardly anything we need to do, missing values will not affect our analysis as explained above.
+
+
+#### Deleting columns
+
+Deleting columns track_id, track_album_id, track_album_name, track_album_release_date, and playlist_id as we will not be needing these columns for any of our analysis.
+
+```{r}
+songs$track_id = NULL
+songs$track_album_id = NULL
+songs$track_album_name = NULL
+songs$track_album_release_date = NULL
+songs$playlist_id = NULL
+```
+
+
+
+
+#### 3.4
+Displaying the first few observations of the dataset to give an idea of what the data looks like
+```{r}
+songs %>% head() %>% knitr::kable()
+```
+
+
+### Detailed explanation of 12 audio features which we will be using for our analysis
+
+1. danceability - Danceability describes how suitable a track is for dancing based on a combination of musical elements including tempo, rhythm stability, beat strength, and overall regularity. A value of 0.0 is least danceable and 1.0 is most danceable.
+
+2. energy - Energy is a measure from 0.0 to 1.0 and represents a perceptual measure of intensity and activity. Typically, energetic tracks feel fast, loud, and noisy. For example, death metal has high energy, while a Bach prelude scores low on the scale. Perceptual features contributing to this attribute include dynamic range, perceived loudness, timbre, onset rate, and general entropy.
+
+3. key - The estimated overall key of the track. Integers map to pitches using standard Pitch Class notation . E.g. 0 = C, 1 = C♯/D♭, 2 = D, and so on. If no key was detected, the value is -1.
+
+4. loudness - The overall loudness of a track in decibels (dB). Loudness values are averaged across the entire track and are useful for comparing relative loudness of tracks. Loudness is the quality of a sound that is the primary psychological correlate of physical strength (amplitude). Values typical range between -60 and 0 db.
+
+5. mode - Mode indicates the modality (major or minor) of a track, the type of scale from which its melodic content is derived. Major is represented by 1 and minor is 0.
+
+6. speechiness - Speechiness detects the presence of spoken words in a track. The more exclusively speech-like the recording (e.g. talk show, audio book, poetry), the closer to 1.0 the attribute value. Values above 0.66 describe tracks that are probably made entirely of spoken words. Values between 0.33 and 0.66 describe tracks that may contain both music and speech, either in sections or layered, including such cases as rap music. Values below 0.33 most likely represent music and other non-speech-like tracks.
+
+7. acousticness - A confidence measure from 0.0 to 1.0 of whether the track is acoustic. 1.0 represents high confidence the track is acoustic.
+
+8. instrumentalness - Predicts whether a track contains no vocals. “Ooh” and “aah” sounds are treated as instrumental in this context. Rap or spoken word tracks are clearly “vocal”. The closer the instrumentalness value is to 1.0, the greater likelihood the track contains no vocal content. Values above 0.5 are intended to represent instrumental tracks, but confidence is higher as the value approaches 1.0.
+
+9. liveness - Detects the presence of an audience in the recording. Higher liveness values represent an increased probability that the track was performed live. A value above 0.8 provides strong likelihood that the track is live.
+
+10. valence - A measure from 0.0 to 1.0 describing the musical positiveness conveyed by a track. Tracks with high valence sound more positive (e.g. happy, cheerful, euphoric), while tracks with low valence sound more negative (e.g. sad, depressed, angry).
+
+11. tempo - The overall estimated tempo of a track in beats per minute (BPM). In musical terminology, tempo is the speed or pace of a given piece and derives directly from the average beat duration.
+
+12. duration_ms - 	Duration of song in milliseconds
+
+
+
+### Proposed exploratory data analysis
+
+#### 4.1
+I plan to generate some boxplots to understand how many outliers are there and in what variables, check correlation between features and genres, perform some analysis on which artist has the most number of tracks, which artist has the most popular songs and various other visualizations involving artists and what features are most likely to be in their songs.
+
+I did remove some columns which we did not need for our analysis, as of now I don't think new columns or dataframes would be needed, though here and there I might put the songs data in to a different dataframe to perform some analysis so that our original data remains intact.
+
+Most of the questions in this case will be answered by visualisations.
+
+#### 4.2
+
+Boxplots, frequecncy plots(bar charts and histograms), scatterplots, maybe some heatmaps for better visualization.
+
+#### 4.3
+
+I am not very good with plotting beautiful plots, so I would want to learn more of it and implement it in this project as there are so many libraries such as ggplot2 to achieve this.
+
+#### 4.4 
+
+Yes I will be using random forest and decision trees which I studied in Data Mining course last flex.
+
+
+### Exploratory Data Analysis
+
+#### 4.1
+#### Count of songs from each genre
+Checking the total number of songs from each genre using ggplot and then summarizing it in a table.
+```{r}
+#plotting count of each genre
+songs %>% ggplot(aes(x = fct_infreq(playlist_genre) , fill = playlist_genre))+
+  geom_bar(width=0.3)+
+  labs(title = 'Number of songs from each genre', x= 'Genres', y = 'Count' )+
+  theme_minimal()
+#pie-chart
+songs %>% ggplot(aes(x = playlist_genre, fill = playlist_genre))+
+  geom_bar(width=1)+
+  coord_polar()+
+  theme_void()
+
+
+
+
+ songs %>% 
+  count(playlist_genre) %>%
+  knitr::kable()
+
+```
+
+
+
+### Denisty Plots - Audio features of genres
+Here, I have plotted density plots of the audio features of all the genres, which basically tells us how the each genre is related with each individual audio feature, and how relevant that particular feature is in defining that genre. 
+
+```{r}
+#extracting all the audio feature columns
+feature_names <- names(songs)[7:18]
+
+songs %>%
+  dplyr::select(c('playlist_genre', feature_names)) %>%
+  pivot_longer(cols = feature_names) %>%
+  ggplot(aes(x = value)) +
+  geom_density(aes(color = playlist_genre), alpha = 0.5) +
+  facet_wrap(~name, ncol = 3, scales = 'free') +
+  labs(title = 'Spotify Audio Feature Density - by Genre',
+       x = '', y = 'density') +
+  theme(axis.text.y = element_blank())
+
+
+
+```
+### Observations :
+1. EDM tracks are least likely to be acoustic, high on energy, and low on valence (sad) as compared to other genres.
+2. Latin tracks have high danceability and high valence (happier).
+3. Rock songs are least likely to be danceable as compared to other genres.
+4. Rap scores high on speechiness as one would expect, which means it has more spoken words.
+
+As per our denisty plots the following features will provide us the most seperation amongst the genres:
+1. Valence
+2. Energy
+3. Danceability,
+and maybe
+4. Tempo
+
+So i'll focus on these features and explore more details about them.
+
+### Boxplots of audio features of interest
+
+Plotting the boxplots of genres against above mentioned 4 audio features.
+```{r}
+#Valence
+p1 <- songs %>% ggplot(aes(x = playlist_genre, y = valence, color = playlist_genre)) +
+  geom_boxplot(alpha = 0.7, notch = TRUE) +
+  theme_bw() +
+  labs(title = 'How happy or sad the genres are?', x= 'Genres', y = 'Happiness' )
+
+#Energy
+
+p2 <- songs %>% ggplot(aes(x = playlist_genre, y = energy, color = playlist_genre)) +
+  geom_boxplot(alpha = 0.1, notch = TRUE) +
+  theme_bw() +
+  labs(title = 'How energetic are the Genres?', x= 'Genres', y = 'Energy' )
+
+#Danceability
+p3 <- songs %>% ggplot(aes(x = playlist_genre, y = danceability, color = playlist_genre)) +
+  geom_boxplot(alpha = 0.5, notch = TRUE) +
+  theme_bw() +
+  labs(title = 'Genres and their danceablity', x= 'Genres', y = 'Danceability' )
+
+#Tempo
+p4 <- songs %>% ggplot(aes(x = playlist_genre, y = tempo, color = playlist_genre)) +
+  geom_boxplot(alpha = 0.5, notch = TRUE) +
+  theme_bw() +
+  labs(title = 'Genres and their Tempo', x= 'Genres', y = 'Tempo' )
+
+ggarrange(p1,p2,p3,p4 , nrow = 2, ncol = 2)
+
+```
+
+### Insights obtained from density and boxplots.
+
+How does boxplots and density plots together help us understand generes and their features?
+
+1. Valence - As observed in the density plot valence can provide us a good seperation between EDM and Latin tracks as their is a comsiderable difference between their medial values and range, while all other genres have somewhat similar valence.
+
+2. Energy - Latin and Pop tracks have similar range and median values so energy might not be a good seperator for them while the remaining 4 genres have a decent seperation on energy.
+
+3. Danceability - As density plots show Rock has the lowest danceability score while Latin tracks are more closely packed with the high danceability scores and Rap have a little more variability than latin tracks but in general have high danceability score. 
+
+4. Tempo - It might do a good job of seperating EDM tracks from the rest of the genres as most of the EDM tracks are clustered around 125 while other genres have more or less a similar spread and variability.
+
+### Plotting correlations between audio features to check if there is any redundancy
+
+```{r}
+songs %>%
+  dplyr::select(feature_names) %>%
+  scale() %>%
+  cor() %>%
+  corrplot::corrplot(method = 'color', 
+                     order = 'hclust', 
+                     type = 'upper', 
+                     diag = FALSE, 
+                     tl.col = 'black',
+                     addCoef.col = "grey30",
+                     number.cex = .7,
+                     col = colorRampPalette(colors = c('red','white','blue'))(200),
+                     main = 'Audio Feature Correlation',
+                     mar = c(2,2,2,2),
+                     family = 'Avenir',
+                     number.digits = 1.
+                     
+                     )
+
+
+```
+
+Correlation between energy and loudness, and energy and acousticness seems to be on the higher side so we will explore it further.
+```{r}
+tibble(variable = 'energy', loudness = 0.7, acousticness = -0.5)
+```
+
+### Scatterplots Energy vs Loudness and Energy vs Acousticness
+
+Plotting scatterplots to understand the correlation better.
+```{r}
+s1 <- songs %>% ggplot(aes(energy,loudness)) +
+  geom_point(color = 'red', alpha = .5, shape = 17) +
+  geom_smooth(color = 'black')
+
+s2 <- songs %>% ggplot(aes(energy,acousticness)) +
+  geom_point(color = 'blue', alpha = .5, shape = 17) +
+  geom_smooth(color = 'black')
+
+ggarrange(s1,s2)
+
+
+```
+
+We can see that as loudness(dB) of the song increase so does the energy, and with the decrease in acousticness there is an increase in energy though this pattern is not very linear but neverthless there is an observable negative correlation.
+
+Thus via density plots, boxplots and correlation graphs we can infer that loudness will not help much in our prediction as energy gives us better seperation. We will discard loudness.
+
+## Modeling
+
+### Scaling the data and dividing it in to training and testing
+
+```{r}
+#Scaling
+songs_scaled <-  songs%>%
+  mutate_if(is.numeric, scale)
+
+
+set.seed(4715)
+#Training - Testing
+id_train <- sample(nrow(songs_scaled),nrow(songs_scaled)*0.80)
+songs.train = songs_scaled[id_train,]
+songs.test = songs_scaled[-id_train,]
+
+#extracting playlist_genre column
+train_resp <- songs_scaled[id_train, 'playlist_genre']
+test_resp <- songs_scaled[-id_train, 'playlist_genre']
+
+
+
+#creating a function to calculate model accuracy
+model_accuracy_calc <- function(df, model_name) {
+  df %>% 
+    mutate(match = ifelse(true_value == predicted_value, TRUE, FALSE)) %>% 
+    count(match) %>% 
+    mutate(accuracy = n/sum(n),
+           model = model_name)
+}
+
+
+```
+
+
+
+
+### Linear Discrimant Analysis
+First up we will use LDA to see how it performs on the data
+```{r}
+#Using lda function from MASS package
+
+songs.lda <- lda(playlist_genre~ valence+energy+danceability+tempo+speechiness,data=songs.train)
+
+#checking the fitted model
+songs.lda
+
+#predicting the training data
+pred.lda <- predict(songs.lda,data=songs.train)
+
+#tabulating the predicted and observed values
+table(songs.train$playlist_genre,pred.lda$class,dnn=c("Obs","Pred"))
+
+#misclassification rate
+mean(ifelse(songs.train$playlist_genre != pred.lda$class, 1, 0))
+
+```
+We decided to use Valence, Energy, Tempo, Danceability, and Speechiness as our predictors, our model was able to correctly classify 43% of the data.
+
+### LDA on Test Data
+
+```{r}
+pred.lda.test <- predict(songs.lda,data=songs.test)
+
+mean(ifelse(songs.test$playlist_genre != pred.lda.test$class, 1, 0))
+
+```
+Misclassification rate of 83% which means we could only classify 17% of the songs correctly.
+
+### Decision Tree
+
+```{r}
+model_dt <- rpart(playlist_genre ~ valence+energy+danceability+tempo+speechiness , data = songs.train)
+
+rpart.plot::rpart.plot(model_dt, 
+           type = 5, 
+           extra = 104,
+           box.palette = list(purple = "#490B32",
+               red = "#9A031E",
+               orange = '#FB8B24',
+               dark_blue = "#0F4C5C",
+               blue = "#5DA9E9",
+               grey = '#66717E'),
+           leaf.round = 0,
+           fallen.leaves = FALSE, 
+           branch = 0.3, 
+           under = TRUE,
+           under.col = 'grey40',
+           family = 'Avenir',
+           main = 'Genre Decision Tree',
+           tweak = 1.2)
+
+```
+
+1. According to the tree Speechiness is the most important feature seperaring Rap from rest of the genres, tracks with low danceability are classified as Rock. 
+
+2. High Tempo tracks are either classified as EDM or RAP with higher tempo songs being classified as Rap, this observation is inline with out Boxplot as it shows that both rap and edm have high tempo while rap has a larger range, edm tracks are closely packed around their mean.
+
+3. Values under the leafs represents the true values of each genre grouped in to that leaf,
+for example 10% EDM tracks, 14% latin, 7% pop, 20% R&B, 46% Rap, and 2% Rock have been classified as Rap. Similar for all the other leaves.
+
+4. Best classification was achieved for EDM with 56% correctly classified and second best was Rap with 46%. 
+
+### Decision Tree on test data
+
+```{r}
+predict_dt <- predict(object = model_dt, newdata = songs.test)
+max_id <- apply(predict_dt, 1, which.max)
+pred <- levels(as.factor(songs.test$playlist_genre))[max_id]
+
+compare_dt <- data.frame(true_value = songs.test$playlist_genre,
+                         predicted_value = pred,
+                         model = 'decision_tree',
+                         stringsAsFactors = FALSE)
+
+
+
+accuracy_dt <- model_accuracy_calc(df = compare_dt, model_name = 'decision_tree')
+accuracy_dt
+```
+
+We get a classification rate of 38% on out test data which is lower from our previous 
+
+### Random Forest
+
+```{r}
+model_rf <- randomForest(as.factor(playlist_genre) ~ valence+energy+danceability+tempo+speechiness , ntree = 100, importance = TRUE, data = songs.train)
+
+predict_rf <- predict(model_rf, songs.test)
+
+compare_rf <- data.frame(true_value = test_resp,
+                         predicted_value = predict_rf,
+                         model = 'random_forest',
+                         stringsAsFactors = FALSE) 
+
+accuracy_rf <- model_accuracy_calc(df = compare_rf, model_name = 'random_forest')
+accuracy_rf
+```
+
+Surprisingly Random Forest gives us a very high accuracy rate of 81% on test data.
+
+### Summary
+
+1. I tried to classify the songs based on their audio features, which is a very imporant aspect for any music streaming service as this helps them to create playlists and make recommendations to their user.
+
+2. I started with some basic exploratory data analysis, and plotted some density plots which helped me figure out what features will be the most important for our classificiation.
+
+3. Boxplots were plotted of the important audio features from previous step and insights from boxplots were similar to ones from density plots and provided more information on the spread of the features in each of the genres.
+
+4. Spotify data was then divided in to 80% testing data and 20% trraining data on which LDA, Decision Trees and Random Forest models were applied.
+
+5. Random Forest gave us the best classification rate of 81% on the test data.
+
+6. One really interesting observation from correlation graph of audio features was that Danceability is negatively correlated with tempo and energy though the negative correlation is not very high. I would want to explore more on this particular aspect.
+
+7. I am not satisfied with the outcomes of the model, and I believe Random Forest is giving a very low misclassification rate, I would want to explore more of this in depth.
+
+8. We could also try to single out some genres instead of predicting all 6 and see which features would be most relevant and how that improves our classification over classifying all the 6 genres in one model.
+
+9. Lastly, I would want to use Neural Networks on this data as I believe it would give the best results, but due to lack of time and knowledge on neural net I was not able to use that model in this project.
+
+
+
+
+
+
