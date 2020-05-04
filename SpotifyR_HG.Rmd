@@ -2,10 +2,7 @@
 title: "Spotify"
 author: "Hardik Gupta"
 date: '2020-04-04'
-output:
-  html_document:
-    toc: true
-    toc_float: true
+output: rmarkdown::github_document
 ---
 ### Problem Statement
 The objective of this project is to explore various songs and to classify them in to genres by analysing their audio features.This helps music streaming services such as Spotify/Youtube and many other platforms to create playlits and also make recommendations to their user based on their preferences and also music they have listened to in past.
