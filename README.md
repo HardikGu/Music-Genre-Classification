@@ -1,6 +1,8 @@
 # Music-Genre-Classification
 Classifying music genres using LDA, Decision Trees, and Random Forest
+
 Project Presentation file also has audio to walkthrough the contents.
+
 Project Report contains the executive summary
 
 # Problem Statement
