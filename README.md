@@ -1,5 +1,7 @@
 # Music-Genre-Classification
 Classifying music genres using LDA, Decision Trees, and Random Forest
+Project Presentation file also has audio to walkthrough the contents.
+Project Report contains the executive summary
 
 # Problem Statement
 The objective of this project is to explore various songs and to classify them in to genres by analysing quantitative audio features,
